@@ -50,7 +50,7 @@ function usage() {
 	echo "Install Usernetes systemd units to ${config_dir}/systemd/unit ."
 	echo
 	echo "  --start=UNIT        Enable and start the specified target after the installation, e.g. \"u7s.target\". Set to an empty to disable autostart. (Default: \"$start\")"
-	echo "  --cri=RUNTIME       Specify CRI runtime, \"containerd\" or \"crio\". (Default: \"$cri\")"
+	echo "  --cri=RUNTIME       Specify CRI runtime, \"containerd\", \"crio\" or \"trustme\". (Default: \"$cri\")"
 	echo '  --cni=RUNTIME       Specify CNI, an empty string (none) or "flannel". (Default: none)'
 	echo "  -p, --publish=PORT  Publish ports in RootlessKit's network namespace, e.g. \"0.0.0.0:10250:10250/tcp\". Can be specified multiple times. (Default: \"${publish_default}\")"
 	echo "  --cidr=CIDR         Specify CIDR of RootlessKit's network namespace, e.g. \"10.0.100.0/24\". (Default: \"$cidr\")"
@@ -95,10 +95,10 @@ while true; do
 	--cri)
 		cri="$2"
 		case "$cri" in
-		"" | containerd | crio) ;;
+		"" | containerd | crio | trustme) ;;
 
 		*)
-			ERROR "Unknown CRI runtime \"$cri\". Supported values: \"containerd\" (default) \"crio\" \"\"."
+			ERROR "Unknown CRI runtime \"$cri\". Supported values: \"containerd\" (default) \"crio\" \"trustme\" \"\"."
 			exit 1
 			;;
 		esac
@@ -257,6 +257,9 @@ WantedBy=u7s.target
 EOF
 
 ### RootlessKit
+### Launch Rootlesskit, also with it the cri server /boot/{cri}.sh
+### (launch is done using /boot/rootlesskit.sh to launch the script inside the namespaces)
+### The namespaces created here are joined by the other components.
 if [ -n "$cri" ]; then
 	cat <<EOF | x u7s-rootlesskit.service
 [Unit]
@@ -361,6 +364,8 @@ ${service_common}
 EOF
 
 ### node
+### if containerd is set, awaits u7s-containerd-fuse-overlayfs-grpc
+### otherwise it awaits u7s-kubelet-${cri}, kube-proxy, and flanneld if cni = flannel
 if [ -n "$cri" ]; then
 	cat <<EOF | x u7s-node.target
 [Unit]
@@ -372,7 +377,8 @@ PartOf=u7s.target
 [Install]
 WantedBy=u7s.target
 EOF
-
+### This is only written if cri = containerd
+### it's the fuse overlayfs service that containerd uses
 	if [ "$cri" = "containerd" ]; then
 		cat <<EOF | x u7s-containerd-fuse-overlayfs-grpc.service
 [Unit]
@@ -388,7 +394,10 @@ ${service_common}
 EOF
 
 	fi
-
+### Kubelet service
+### launches /boot/kubelet-{cri}.sh
+### that script will call /boot/kubelet.sh, which nsenters into the namespaces
+### of /boot/{cri}.sh
 	cat <<EOF | x u7s-kubelet-${cri}.service
 [Unit]
 Description=Usernetes kubelet service (${cri})
