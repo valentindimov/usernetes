@@ -30,6 +30,9 @@ Usernetes aims to provide a reference distribution of Kubernetes that can be ins
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
+## Note on using the trustme CRI runtime
+Currently, the makefile does not build a `trustme` binary. To use `--cri=trustme`, you must manually place a compiled `trustme` binary in the `./bin` directory before calling `./install.sh`.
+
 ## Included components
 
 * Installer scripts
